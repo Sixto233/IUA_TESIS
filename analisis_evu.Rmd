@@ -1,0 +1,486 @@
+---
+title: "IUA"
+author: "Sixto Cristiani"
+date: '2022-06-25'
+output: html_document
+---
+
+
+
+
+
+
+
+
+```{r}
+library("tidyverse")
+library("sf")
+```
+
+```{r}
+
+espaciosverdes <- read_sf('http://cdn.buenosaires.gob.ar/datosabiertos/datasets/espacios-verdes/espacio-verde-publico.geojson', )
+```
+
+```{r}
+ncol(espaciosverdes)
+nrow(espaciosverdes)
+colnames(espaciosverdes)
+head(espaciosverdes,4)
+```
+
+```{r}
+summary(espaciosverdes)
+```
+
+Del summary se puede extraer poca información debido al caracter predominante de datos que tienen como estructura charactar. Sin embargo podemos ver como el tamaño de los espacios verdes, un 25 por ciento tiene menos de 232 metros cuadrados. Mientras que un 50% tienen 717 metros cuadrados o menos. Por otro lado el promedio es de 9377 metros cuadrados. 
+
+Podemos igualmente intentar cambiar la estructrura, pasando a un data.frame. Para eso tenemos que sacar la variable geoespacial de geoemtria.
+
+```{r}
+espaciosverdes_df = st_drop_geometry(espaciosverdes)
+
+espaciosverdes_df = as.data.frame(unclass(espaciosverdes_df), stringsAsFactors = TRUE)
+
+summary(espaciosverdes_df)
+```
+Según el dataset los barrios con mayor cantidad de espacios verdes son Lugano, Soldati y Palermo.
+
+
+```{r}
+str(espaciosverdes_df)
+```
+Ahora el dataset cuenta con factores como su principal estructura de datos.
+
+
+
+Clase II
+
+
+```{r}
+espacios_lugano = filter(espaciosverdes_df, BARRIO =="VILLA LUGANO")
+
+head(espacios_lugano,4)
+```
+
+```{r}
+
+espacios_lugano_subset = espacios_lugano %>% select(4:8)
+
+head(espacios_lugano_subset)
+
+```
+
+Seleccionamos las columnas de la 4 a la 8 porque nos interesa ver si los espacios verdes de Villa Lugano están apadrinados o no y si tienen un espacio de juegos.
+
+
+En el dataset original vamos a pasar los metros cuadrados a hectareas para que sea más facil entender las dimensiones del tamaño de los espacios verdes
+```{r}
+espaciosverdes_df = espaciosverdes_df %>% mutate(hectarea = area/10000)
+
+summary(espaciosverdes_df$hectarea)
+```
+obtenemos resultados similares a nuestro análisis del comienzo, la mediana de tamaño es de tan solo 0.07 hectáreas. Para poner en contraste, una manzana (una cuadra por una cuadra) es el equivalente a una hectarea.
+
+
+Ahora procedermos a ordenar el dataset en base a los espacios verdes más grandes
+
+```{r}
+espaciosverdes_df = espaciosverdes_df %>% arrange(desc(area))
+
+head(espaciosverdes_df,4)
+```
+Los espacios verdes más grandes entonces son la reserva ecológica, la general paz ( sus espacios verdes, no la calzada) y el parque indoamericano.
+
+Por otro lado, vamos a cambiarle el nombre de la columna "perimeter" por "perimetro" para mantener el idioma español en el dataste
+
+```{r}
+espaciosverdes_df = rename(espaciosverdes_df, perimetro = "perimeter",patio_de_juegos = "patio_de_j",obervacion ="observacio")
+
+colnames(espaciosverdes_df)
+```
+Vemos que efectivamente se cambiaron los nombres
+
+Tarea número III
+
+
+```{r}
+metros_por_barrio  =espaciosverdes_df %>% group_by(BARRIO) %>%  summarise(area_barrio = sum(area))
+
+metros_por_barrio %>% arrange(desc(area_barrio) )
+
+
+```
+Se agrupó el dataset por el barrio y después se creo una nueva variable llamada area_barrio que suma el area de todos los espacios verdes de un barrio. El resultado es que Villa Soldati y Puerto Madero son los dos barrios con mayor area de espacios verdes. Esto se debe a que en esos barrrios se encuentran las reservas ecológicas de la ciudad. 
+
+
+Ahora vamos a trabajar con los años de los decretos de cada espacio verde para eso filtramos los que no tienen datos
+
+```{r}
+
+
+espaciosverdes_df_fechas = filter(espaciosverdes_df, fecha_decr != "")
+
+head(espaciosverdes_df_fechas,4)
+
+```
+Luego creamos una nueva variable con el nombre anio_decr, usamos el subsetting de string para sacar los 4 caracteres desde la izquierda de la fecha del decreto, lo cual nos deja con el anio del mismo. 
+```{r}
+espaciosverdes_df_fechas = espaciosverdes_df_fechas %>% mutate(anio_decr = str_sub(fecha_decr,-4,-1))
+head(espaciosverdes_df_fechas,4)
+
+```
+ahora podemos agrupar por fechas y por barrios
+
+```{r}
+resumen_barrial <- espaciosverdes_df_fechas %>%
+  group_by(anio_decr, BARRIO) %>%
+  summarise(area = sum(area))
+
+resumen_barrial
+
+```
+
+Ahora tenemos las fechas de creacion de las plazas por barrio. Es tiempo de pivotear para ver mejor la información
+
+
+```{r}
+resumen_wider <- pivot_wider(resumen_barrial, 
+                                       names_from = BARRIO, 
+                                       values_from = area)  
+
+resumen_wider
+```
+
+Con pivot wider se pasó de tener a los barrios como varaible en filas para pasarlos a columna, de esta forma se puede ver como fue la historia de creacion de espacios verdes en los barrios y además entender la cantidad de metros que se sumaron dependiendo el año.
+
+Parece que la creación por año nos deja la información tan desagregada que no nos deja detectar patrones, por lo que agregaremos una columna que ponga las décadas para cada año.
+
+```{r}
+espaciosverdes_df_fechas <- espaciosverdes_df_fechas %>%
+  mutate(decada = case_when(
+    anio_decr < 1910 ~ "1900", 
+    anio_decr < 1920 ~ "1910", 
+    anio_decr < 1930 ~ "1920", 
+    anio_decr < 1940 ~ "1930", 
+    anio_decr < 1950 ~ "1940", 
+    anio_decr < 1960 ~ "1950", 
+    anio_decr < 1970 ~ "1960", 
+    anio_decr < 1980 ~ "1970", 
+    anio_decr < 1990 ~ "1980", 
+    anio_decr < 2000 ~ "1990", 
+    anio_decr < 2010 ~ "2000",
+    anio_decr < 2020 ~ "2010",
+    is.na(anio_decr) ~ "Sin datos"
+  ))
+```
+
+
+Repetimos el group_by con summarie y el pivot wider
+
+```{r}
+resumen_barrial <- espaciosverdes_df_fechas %>%
+  group_by(decada, BARRIO) %>%
+  summarise(area = sum(area))
+
+resumen_barrial
+```
+
+```{r}
+resumen_wider <- pivot_wider(resumen_barrial, 
+                                       names_from = BARRIO, 
+                                       values_from = area)  
+
+resumen_wider
+```
+Podemos ver como la información se muestra más claramente a nivel de década. Por ejemplo, no se crea un espacio públci en villa gral mitre desde 1930, que se tenga datos.
+
+
+
+
+Ahora vamos a ver cuanto representan los espacios verdes de cada barrio como el total del área
+```{r}
+
+#Barrios#
+
+barrios <- st_read('https://bitsandbricks.github.io/data/CABA_barrios.geojson')
+barrios
+
+```
+
+Traemos el dataset barrios y lo mergeamos con el de espacios verdes. Lo podríamos hacer con un st_join pero como todavía no nos interesa la información georeferenciada vamos a sacarle tambien la geometría
+
+```{r}
+barrios_df = st_drop_geometry(barrios)
+barrios_df = as.data.frame(barrios_df, stringsasfactors=TRUE)
+str(barrios_df)
+```
+
+```{r}
+
+espaciosverdes_consolidado = espaciosverdes_df  %>% group_by(BARRIO) %>% summarise(area = sum(area))
+
+
+espaciosverdes_df_barrios = left_join(espaciosverdes_consolidado, barrios)
+
+espaciosverdes_df_barrios = espaciosverdes_df_barrios %>% group_by(BARRIO) %>% summarise(area = sum(area), AREA = max(AREA))
+
+espaciosverdes_df_barrios
+```
+
+```{r}
+espaciosverdes_df_barrios = rename(espaciosverdes_df_barrios, Area_Espacios_Publicos = "area", Area_Barrial = "AREA")
+espaciosverdes_df_barrios
+```
+
+
+
+Ahora queremos conocer el ratio de area de espacios publicos sobre el area total del barrio, usamos la función mutate
+```{r}
+espaciosverdes_df_barrios = espaciosverdes_df_barrios %>% mutate(ratio_areas = Area_Espacios_Publicos/Area_Barrial)
+
+espaciosverdes_df_barrios = espaciosverdes_df_barrios %>% arrange(desc(ratio_areas))
+
+
+espaciosverdes_df_barrios
+```
+
+Podemos ver que los barrios con mayor proporción son villa real, uerto mader y villa Soldati.
+
+Clase IV
+
+
+Ahora trabajaremos sobre gráficos y diferentes formas de presentar la información de nuestros datasets.      
+
+
+En primer lugar analizaremos una variable continua, en nuestro caso puede ser el tamaño en metros cuadrados de los espacios verdes de CABA.
+
+
+Para poder entender estas variables se puede hacer tanto por un gráfico de densidad como por un histograma.
+```{r}
+ggplot(filter(espaciosverdes_df, clasificac =="PARQUE" | clasificac =="PLAZA"))+
+  geom_density(aes(x=area))+
+  labs(title="Area de parques y plazas de CABA",
+       fill="Zona",
+       x="Area (M2)",
+       y="Distribución de la variable area",
+       caption="Fuente: Datos abiertos del GCBA")+
+  scale_fill_viridis_d() +
+  theme_bw() + facet_wrap(~clasificac)
+
+```
+
+```{r}
+ggplot(filter(espaciosverdes_df, clasificac =="PARQUE" | clasificac =="PLAZA"))+
+  geom_histogram(aes(x=area, fill=clasificac), bins =50)+
+  labs(title="Area de parques y plazas de CABA",
+       fill="Zona",
+       x="Area (M2)",
+       y="Concentración de la información",
+       caption="Fuente: Datos abiertos del GCBA")+
+    scale_fill_manual(values = c("goldenrod2", "indianred2"))+
+  theme_bw()
+```
+
+
+Ahora veremos si a medida que se fueron incrementando los años tambien se fueron incorporando los espacios públicos creados.
+
+
+```{r}
+library("hrbrthemes")
+
+```
+
+Realizamos un gropub_by sin el barrio para tener un resumen a nivel de la ciudad
+```{r}
+resumen_barrial <- espaciosverdes_df_fechas %>%
+  group_by(decada ) %>%
+  summarise(area = sum(area))
+
+resumen_barrial
+```
+
+
+```{r}
+
+resumen_barrial  %>%
+  ggplot( aes(x= decada, y=area)) +
+    geom_line( color="grey", size =3 ) +
+    geom_point(shape=21, color="black", fill="#69b3a2", size=3.5) +
+    theme_ipsum() +
+    ggtitle("Area de espacios verdes por decada de creación") + labs( y="Superficie cubierta (M2)", caption="Fuente: Elaboración propia en base a GCBA") + scale_y_continuous(labels = function(x) format(x, scientific = FALSE))
+```
+El presente gráfico se realizó para comprender la fecha de creación de los espacios verdes de la ciudad autónoma de buenos aires. Agrupado por década de creación. 
+Podemos ver claramente como la decada de creacion de mas espacios verdes es la decada de 1980. Salvo esa decada en particular, no se destacan grandes avances en materia de creacion de espacio verde y público.
+
+Area por barrio
+
+```{r, fig.dim = c(15, 15)}
+ggplot(espaciosverdes_df_barrios)  + geom_bar(aes(x=reorder(BARRIO, ratio_areas), weight=ratio_areas, fill=Area_Espacios_Publicos
+)) +
+  geom_text(aes(x=BARRIO, y=ratio_areas, label=paste(round(ratio_areas,2),"%")), size=3.5, color="black", position = position_dodge(width=0.9), hjust=-0.25)+
+  labs(title="Porcentaje de espacios verdes sobre el total del area del barrio",
+       subtitle="CABA",
+       fill="Area_espacios_publicos",
+       x="Partido",
+       y="Porcentaje",
+       caption="Fuente: GCBA") +
+  scale_fill_viridis_c() +
+  theme_light() +
+  coord_flip()
+```
+Realizamos un grafico de barras para poder entender como es la composición de los espacios verdes en la ciudad de buenos aires por barrio y tambien por tamaño de barrio. El porcentaje es del total de espacios verdes sobre el total del area del barrio. Podemos ver que villa santa rita casi no tiene espacios verdes.
+Podemos ver como habiamos mencionado anteriormente que el barrio con mas porcentaje de espacios verdes es el de Villa real, sin embargo por el color nos damos cuenta que no es de los que más tiene en general.
+
+
+```{r}
+resumen_barrial <- espaciosverdes_df_fechas %>%
+  group_by(decada, BARRIO ) %>%
+  summarise(area = sum(area))
+
+resumen_barrial
+```
+
+Agrupamos la creacion de espacios verdes por decada y por barrio
+```{r}
+
+ggplot(resumen_barrial)  + geom_bar(aes(x=reorder(decada, decada), weight=area, fill=BARRIO
+))  +
+  scale_fill_viridis_d() +
+  theme_light() +
+  coord_flip()
+
+```
+Realizamos un primer acercamiento sobre como graficar la información, pero todavía no es del todo clara.
+```{r, fig.dim = c(10, 6)}
+ggplot(resumen_barrial)  + geom_bar(aes(x=reorder(BARRIO, area), weight=area, fill= decada
+))  +
+  labs(title="Tamaño de espacios verdes por barrio y fecha de creacion",
+       subtitle="CABA",
+       fill="Area_espacios_publicos",
+       x="Barrio",
+       y="Tamaño de espacios verdes en M2",
+       caption="Fuente: GCBA") +
+  scale_fill_viridis_d() +
+  theme_light() +
+  coord_flip()
+```
+
+Elegimos mostrar por barrio la cantidad de espacios verdes creados por decadas. Para entender como fue el desarrollo y el crecimiento de los mismos a lo largo del tiempo. Concluimos que el barrio donde más espacios verdes se crearon fue en 1980 y especificamente en Puerto Madero. 
+
+Tarea V
+
+1.a. Mapa coroplético que muestre la distribución geográfica de una variable numérica.
+
+
+
+```{r}
+
+resumen_barrial = left_join(resumen_barrial, barrios)
+
+resumen_barrial= st_as_sf(resumen_barrial)
+
+```
+```{r}
+ggplot() +
+  geom_sf(data = resumen_barrial, aes(geometry = resumen_barrial$geometry , fill = area )) +  
+  scale_fill_viridis_c() +
+  labs(title = "Espacios verdes creados por barrio y fecha",
+       subtitle = "CABA - Mayo 2021",
+       fill = "Tamaño en metros cuadrados",
+       caption = "Fuente: CABA") + facet_wrap(~decada)
+```
+
+
+```{r}
+
+resumen_barrial =  filter(resumen_barrial, area <2000000) 
+ ggplot() +
+  geom_sf(data = resumen_barrial, aes(geometry = resumen_barrial$geometry , fill = area )) +  
+  scale_fill_viridis_c() +
+  labs(title = "Densidad",
+       subtitle = "CABA - Mayo 2021",
+       fill = "Densidad poblacional (hab./km2)",
+       caption = "Fuente: CABA") + facet_wrap(~decada)
+```
+
+
+
+1.b. Mapa coroplético que muestre la distribución geográfica de una variable categórica.
+
+
+
+```{r}
+Tipologia_predominante =  espaciosverdes_df %>%
+  group_by(clasificac, BARRIO ) %>%
+  summarise(Tipologia = n())
+
+
+
+Tipologia_predominante = left_join(Tipologia_predominante, barrios)
+
+resumen_barrial= st_as_sf(resumen_barrial)
+
+```
+
+```{r}
+ ggplot() +
+  geom_sf(data = Tipologia_predominante, aes(geometry = Tipologia_predominante$geometry , fill = Tipologia )) +  
+  scale_fill_viridis_c() +
+  labs(title = "Densidad",
+       subtitle = "CABA - Mayo 2021",
+       fill = "Densidad poblacional (hab./km2)",
+       caption = "Fuente: CABA") + facet_wrap(~clasificac)
+```
+
+1.c. Elegir uno de los mapas anteriores e incorporarle una o más geometrías que sean relevantes al análisis.
+
+```{r}
+
+campanas = read_sf("https://cdn.buenosaires.gob.ar/datosabiertos/datasets/subsecretaria-de-higiene-urbana/campanas-verdes/campanas-verdes.geojson")
+
+
+```
+
+```{r}
+Plazas_Por_Barrio = espaciosverdes %>% filter(clasificac =="PLAZA", BARRIO !="BALBANERA")
+
+Plazas_Por_Barrio = st_drop_geometry(Plazas_Por_Barrio)
+
+Plazas_Por_Barrio = Plazas_Por_Barrio %>% group_by(BARRIO) %>% summarise(plaza = n())
+
+
+```
+
+
+
+```{r}
+Plazas_Por_Barrio = left_join(Plazas_Por_Barrio, barrios)
+
+Plazas_Por_Barrio= st_as_sf(Plazas_Por_Barrio)
+
+
+```
+
+
+
+ No me gusta
+```{r}
+library("mapview")
+```
+ 
+```{r}
+
+mapview(Plazas_Por_Barrio, zcol = "plaza", na.rm = TRUE) + mapview(campanas)
+
+
+```
+ 
+
+ 
+
+
+ 
+
+
+
